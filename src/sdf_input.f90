@@ -79,4 +79,8 @@ MODULE sdf_input
         read_namevalue_string
   END INTERFACE sdf_read_namevalue
 
+  INTERFACE sdf_read_datablock
+    MODULE PROCEDURE &
+        read_datablock_charray
+  END INTERFACE sdf_read_datablock
 END MODULE sdf_input

@@ -1705,4 +1705,71 @@ CONTAINS
 
   END SUBROUTINE read_namevalue_string
 
+
+
+  SUBROUTINE read_datablock_meta(h)
+
+    TYPE(sdf_file_handle) :: h
+    TYPE(sdf_block_type), POINTER :: b
+
+    b => h%current_block
+
+    CALL read_block_header(h)
+
+    IF (h%rank == h%rank_master) THEN
+      CALL sdf_safe_read_id(h, b%mimetype)
+      CALL sdf_safe_read_id(h, b%checksum_type)
+      CALL sdf_safe_read_string(h, b%checksum)
+    END IF
+
+    h%current_location = b%block_start + b%info_length
+    b%done_info = .TRUE.
+
+  END SUBROUTINE read_datablock_meta
+
+
+
+  SUBROUTINE read_datablock_charray(h, array)
+
+    TYPE(sdf_file_handle) :: h
+    CHARACTER(LEN=*), DIMENSION(:), INTENT(OUT) :: array
+    INTEGER(i8) :: i, sz, bytes_read
+    INTEGER :: errcode, len1, len2
+    TYPE(sdf_block_type), POINTER :: b
+
+    IF (sdf_check_block_header(h)) RETURN
+
+    b => h%current_block
+    IF (.NOT. b%done_info) CALL read_datablock_meta(h)
+
+    h%current_location = b%data_location
+
+    IF (h%rank == h%rank_master) THEN
+      CALL MPI_FILE_SEEK(h%filehandle, h%current_location, MPI_SEEK_SET, &
+          errcode)
+
+      sz         = SIZE(array)
+      len1       = LEN(array)
+      bytes_read = 0
+
+      ! Read data
+      DO i = 1, sz
+        IF ( bytes_read >= b%data_length ) EXIT
+        len2 = MIN(len1, b%data_length - bytes_read)
+        CALL MPI_FILE_READ(h%filehandle, array(i), len2, &
+            b%mpitype, MPI_STATUS_IGNORE, errcode)
+        bytes_read = bytes_read + len2
+      END DO
+
+      CALL MPI_FILE_SEEK(h%filehandle, h%current_location + b%data_length, MPI_SEEK_SET, &
+          errcode)
+    END IF
+
+    h%rank_master = h%default_rank
+    h%current_location = b%data_location + b%data_length
+    b%done_info = .TRUE.
+    b%done_data = .TRUE.
+
+  END SUBROUTINE read_datablock_charray
+
 END MODULE sdf_input_ru
